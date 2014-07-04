@@ -33,6 +33,7 @@ var (
 	procDispatchMessage               = moduser32.NewProc("DispatchMessageW")
 	procSendMessage                   = moduser32.NewProc("SendMessageW")
 	procPostMessage                   = moduser32.NewProc("PostMessageW")
+	procPostThreadMessage             = moduser32.NewProc("PostThreadMessageW")
 	procWaitMessage                   = moduser32.NewProc("WaitMessage")
 	procSetWindowText                 = moduser32.NewProc("SetWindowTextW")
 	procGetWindowTextLength           = moduser32.NewProc("GetWindowTextLengthW")
@@ -268,6 +269,18 @@ func PostMessage(hwnd HWND, msg uint32, wParam, lParam uintptr) bool {
 		uintptr(msg),
 		wParam,
 		lParam)
+
+	return ret != 0
+}
+
+// http://msdn.microsoft.com/en-us/library/windows/desktop/ms644946(v=vs.85).aspx
+func PostThreadMessage(idThread DWORD, msg uint32, wParam WPARAM, lParam LPARAM) bool {
+	ret, _, _ := procPostThreadMessage.Call(
+		uintptr(idThread),
+		uintptr(msg),
+		uintptr(wParam),
+		uintptr(lParam),
+	)
 
 	return ret != 0
 }
