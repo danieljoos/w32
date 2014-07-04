@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"syscall"
 	"unsafe"
+	"reflect"
 )
 
 var (
@@ -29,6 +30,11 @@ var (
 	procOpenService        = modadvapi32.NewProc("OpenServiceW")
 	procStartService       = modadvapi32.NewProc("StartServiceW")
 	procControlService     = modadvapi32.NewProc("ControlService")
+	procCredRead          = modadvapi32.NewProc("CredReadW")
+	procCredWrite         = modadvapi32.NewProc("CredWriteW")
+	procCredFree          = modadvapi32.NewProc("CredFree")
+	procCredDelete        = modadvapi32.NewProc("CredDeleteW")
+	procCredEnumerate     = modadvapi32.NewProc("CredEnumerateW")
 )
 
 func RegCreateKey(hKey HKEY, subKey string) HKEY {
@@ -296,4 +302,83 @@ func ControlService(hService HANDLE, dwControl uint32, lpServiceStatus *SERVICE_
 		uintptr(unsafe.Pointer(lpServiceStatus)))
 
 	return ret != 0
+}
+
+// http://msdn.microsoft.com/en-us/library/windows/desktop/aa374804(v=vs.85).aspx
+func CredRead(targetName string, typ uint) (*Credential, error) {
+	var pcred uintptr
+	ret, _, _ := procCredRead.Call(
+		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(targetName))),
+		uintptr(typ),
+		0,
+		uintptr(unsafe.Pointer(&pcred)),
+	)
+
+	if ret == 0 {
+		return nil, syscall.GetLastError()
+	}
+
+	var result = CredentialFromCREDENTIAL((*CREDENTIAL)(unsafe.Pointer(pcred)))
+	procCredFree.Call(pcred)
+
+	return result, nil
+}
+
+// http://msdn.microsoft.com/en-us/library/windows/desktop/aa375187(v=vs.85).aspx
+func CredWrite(credential *Credential) error {
+	cred, _ := CredentialToCREDENTIAL(credential)
+	ret, _, _ := procCredWrite.Call(
+		uintptr(unsafe.Pointer(&cred)),
+		0,
+	)
+
+	if ret == 0 {
+		return syscall.GetLastError()
+	}
+	return nil
+}
+
+// http://msdn.microsoft.com/en-us/library/windows/desktop/aa374787(v=vs.85).aspx
+func CredDelete(targetName string, typ uint) error {
+	ret, _, _ := procCredDelete.Call(
+		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(targetName))),
+		uintptr(typ),
+		0,
+	)
+
+	if ret == 0 {
+		return syscall.GetLastError()
+	}
+	return nil
+}
+
+// http://msdn.microsoft.com/en-us/library/windows/desktop/aa374794(v=vs.85).aspx
+func CredEnumerate(filter string) ([]*Credential, error) {
+	var result []*Credential
+	var count DWORD
+	var pcreds uintptr
+	ret, _, _ := procCredEnumerate.Call(
+		uintptr(unsafe.Pointer(syscall.StringToUTF16Ptr(filter))),
+		0,
+		uintptr(unsafe.Pointer(&count)),
+		uintptr(unsafe.Pointer(&pcreds)),
+	)
+
+	if ret == 0 {
+		return result, syscall.GetLastError()
+	}
+
+	result = make([]*Credential, count)
+	credSliceHeader := reflect.SliceHeader{
+		Data: pcreds,
+		Len: int(len(result)),
+		Cap: int(len(result)),
+	}
+	credSlice := *(*[]*CREDENTIAL)(unsafe.Pointer(&credSliceHeader))
+	for i, _ := range credSlice {
+		result[i] = CredentialFromCREDENTIAL(credSlice[i])
+	}
+	procCredFree.Call(pcreds)
+
+	return result, nil
 }

@@ -5,6 +5,8 @@
 package w32
 
 import (
+	"C"
+	"reflect"
 	"syscall"
 	"unicode/utf16"
 	"unsafe"
@@ -198,4 +200,71 @@ func ComInvoke(disp *IDispatch, dispid int32, dispatch int16, params ...interfac
 	}
 	result = &ret
 	return
+}
+
+func CredentialFromCREDENTIAL(cred *CREDENTIAL) (result *Credential) {
+	result = new(Credential)
+	result.Flags = cred.Flags
+	result.Type = uint(cred.Type)
+	result.TargetName = UTF16PtrToString(cred.TargetName)
+	result.Comment = UTF16PtrToString(cred.Comment)
+	result.LastWritten.HighDateTime = cred.LastWritten.DwHighDateTime
+	result.LastWritten.LowDateTime = cred.LastWritten.DwLowDateTime
+	result.CredentialBlob = C.GoBytes(unsafe.Pointer(cred.CredentialBlob), C.int(cred.CredentialBlobSize))
+	result.Persist = uint(cred.Persist)
+	result.Attributes = make([]CredentialAttribute, cred.AttributeCount)
+	attrSliceHeader := reflect.SliceHeader{
+		Data: cred.Attributes,
+		Len:  int(cred.AttributeCount),
+		Cap:  int(cred.AttributeCount),
+	}
+	attrSlice := *(*[]CREDENTIAL_ATTRIBUTE)(unsafe.Pointer(&attrSliceHeader))
+	for i, attr := range attrSlice {
+		resultAttr := &result.Attributes[i]
+		resultAttr.Keyword = UTF16PtrToString(attr.Keyword)
+		resultAttr.Flags = attr.Flags
+		resultAttr.Value = C.GoBytes(unsafe.Pointer(attr.Value), C.int(attr.ValueSize))
+	}
+	result.TargetAlias = UTF16PtrToString(cred.TargetAlias)
+	result.UserName = UTF16PtrToString(cred.UserName)
+
+	return result
+}
+
+func CredentialToCREDENTIAL(cred *Credential) (result CREDENTIAL, attributes []*CREDENTIAL_ATTRIBUTE) {
+	result.Flags = cred.Flags
+	result.Type = DWORD(cred.Type)
+	result.TargetName, _ = syscall.UTF16PtrFromString(cred.TargetName)
+	result.Comment, _ = syscall.UTF16PtrFromString(cred.Comment)
+	result.LastWritten.DwHighDateTime = cred.LastWritten.HighDateTime
+	result.LastWritten.DwLowDateTime = cred.LastWritten.LowDateTime
+	result.CredentialBlobSize = DWORD(len(cred.CredentialBlob))
+	if result.CredentialBlobSize > 0 {
+		result.CredentialBlob = (uintptr)(unsafe.Pointer(&cred.CredentialBlob[0]))
+	} else {
+		result.CredentialBlob = 0
+	}
+	result.Persist = DWORD(cred.Persist)
+	result.AttributeCount = DWORD(len(cred.Attributes))
+	attributes = make([]*CREDENTIAL_ATTRIBUTE, len(cred.Attributes))
+	for i, attribute := range cred.Attributes {
+		attributes[i] = &CREDENTIAL_ATTRIBUTE{
+			Keyword: syscall.StringToUTF16Ptr(attribute.Keyword),
+			Flags: attribute.Flags,
+			ValueSize: DWORD(len(attribute.Value)),
+			Value: 0,
+		}
+		if len(attribute.Value) > 0 {
+			attributes[i].Value = uintptr(unsafe.Pointer(&attribute.Value[0]))
+		}
+	}
+	if len(attributes) > 0 {
+		result.Attributes = (uintptr)(unsafe.Pointer(&attributes[0]))
+	} else {
+		result.Attributes = 0
+	}
+	result.TargetAlias, _ = syscall.UTF16PtrFromString(cred.TargetAlias)
+	result.UserName, _ = syscall.UTF16PtrFromString(cred.UserName)
+
+	return result, attributes
 }

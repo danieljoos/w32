@@ -5,6 +5,7 @@
 package w32
 
 import (
+	"syscall"
 	"unsafe"
 )
 
@@ -916,3 +917,46 @@ type KBDLLHOOKSTRUCT struct {
 }
 
 type HOOKPROC func(int, WPARAM, LPARAM) LRESULT
+
+// http://msdn.microsoft.com/en-us/library/windows/desktop/aa374790(v=vs.85).aspx
+type CREDENTIAL_ATTRIBUTE struct {
+	Keyword   *uint16
+	Flags     DWORD
+	ValueSize DWORD
+	Value     uintptr
+}
+
+// http://msdn.microsoft.com/en-us/library/windows/desktop/aa374788(v=vs.85).aspx
+type CREDENTIAL struct {
+	Flags              DWORD
+	Type               DWORD
+	TargetName         *uint16
+	Comment            *uint16
+	LastWritten        FILETIME
+	CredentialBlobSize DWORD
+	CredentialBlob     uintptr
+	Persist            DWORD
+	AttributeCount     DWORD
+	Attributes         uintptr
+	TargetAlias        *uint16
+	UserName           *uint16
+}
+
+type CredentialAttribute struct {
+	Keyword string
+	Flags   DWORD
+	Value   []byte
+}
+
+type Credential struct {
+	Flags          DWORD
+	Type           uint
+	TargetName     string
+	Comment        string
+	LastWritten    syscall.Filetime
+	CredentialBlob []byte
+	Persist        uint
+	Attributes     []CredentialAttribute
+	TargetAlias    string
+	UserName       string
+}
